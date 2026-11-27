@@ -1,4 +1,5 @@
 
+import json
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -53,22 +54,84 @@ client=OpenAI(
 
 # --Structured Output with Pydantic--
 
-class Person(BaseModel):
-    name:str
-    age:int
-    city:int
+# class Person(BaseModel):
+#     name:str
+#     age:int
+#     city:int
     
-result=client.chat.completions.parse(
+# result=client.chat.completions.parse(
+#     model="openai/gpt-oss-20b",
+#     messages=[
+#         {"role":"system", "content":"You are a helpful assistant"},
+#         {"role":"user", "content":"Give me the name, age and city of a fictional person"}
+#     ],
+#     response_format=Person
+# )
+
+# person=result.choices[0].message.parsed
+# print(person)
+# print(person.name)
+# print(person.age)
+# print(person.city)
+
+# --Define the actual Python function--
+def get_weather(city:str):
+    return{
+        "city":city,
+        "temprature":28,
+        "unit":"celsius",
+        "condition":"sunny",
+    }
+
+tools=[
+    {
+        "type":"function",
+        "function":{
+        "name":"get_weather",
+        "description":"Get the current weather for a given city",
+        "parameters":{
+            "type":"object",
+            "properties": {
+                "city" :{
+                    "type":"string",
+                    "description":"The city to get weather for"
+                }
+            },
+            "required":["city"]
+        }
+    }
+}]
+
+input=[{"role":"user", "content":"What is the current weather of Noida?"}]
+
+result=client.chat.completions.create(
     model="openai/gpt-oss-20b",
-    messages=[
-        {"role":"system", "content":"You are a helpful assistant"},
-        {"role":"user", "content":"Give me the name, age and city of a fictional person"}
-    ],
-    response_format=Person
+    messages=input,
+    tools=tools
 )
 
-person=result.choices[0].message.parsed
-print(person)
-print(person.name)
-print(person.age)
-print(person.city)
+msg=result.choices[0].message
+tool_name=msg.tool_calls[0].function.name
+function_args=json.loads(msg.tool_calls[0].function.arguments)
+
+
+function_result=get_weather(function_args["city"])
+
+print(f"Tool called: {tool_name}")
+print(f"Raw result:{function_result}")
+# print(json.dumps(result.to_dict(), indent=2))
+
+input.append(msg)
+input.append({
+    "role":"tool",
+    "tool_call_id":msg.tool_calls[0].id,
+    "content":json.dumps(function_result)
+    
+})
+final_result=client.chat.completions.create(
+    model="openai/gpt-oss-20b",
+    messages=input,
+    tools=tools
+)
+
+print(f"\n Final answer : {final_result.choices[0].message.content}")
